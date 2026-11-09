@@ -1,15 +1,25 @@
-import { computed, onBeforeUnmount, ref, type CSSProperties, type Ref } from 'vue'
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  type CSSProperties,
+  type Ref
+} from 'vue'
 
 export interface HorizontalSplitOptions {
   initialWidth?: number
   minWidth?: number
   minRightWidth?: number
+  splitterWidth?: number
+  stackBreakpoint?: number
   storageKey?: string
 }
 
 interface HorizontalSplitReturn {
   sidebarWidth: Ref<number>
   isDragging: Ref<boolean>
+  isStacked: Ref<boolean>
   bodyStyle: Ref<CSSProperties>
   startDrag: (event: PointerEvent) => void
 }
@@ -40,19 +50,29 @@ export function useHorizontalSplit(
     initialWidth = 340,
     minWidth = 240,
     minRightWidth = 320,
+    splitterWidth = 6,
+    stackBreakpoint = 900,
     storageKey = 'threejs-day-day-up:sidebar-width'
   } = options
 
   const sidebarWidth = ref<number>(readStoredWidth(storageKey, initialWidth))
   const isDragging = ref<boolean>(false)
+  const isStacked = ref<boolean>(false)
 
-  const bodyStyle = computed<CSSProperties>(() => ({
-    gridTemplateColumns: `${sidebarWidth.value}px 6px minmax(0, 1fr)`
-  }))
+  const bodyStyle = computed<CSSProperties>(() => {
+    if (isStacked.value) {
+      return {}
+    }
+
+    return {
+      gridTemplateColumns: `${sidebarWidth.value}px ${splitterWidth}px minmax(0, 1fr)`
+    }
+  })
 
   let activePointerId: number | null = null
   let containerLeft = 0
   let containerWidth = 0
+  let mediaQuery: MediaQueryList | null = null
 
   function persistWidth(width: number): void {
     if (!storageKey) {
@@ -62,11 +82,28 @@ export function useHorizontalSplit(
     window.localStorage.setItem(storageKey, String(Math.round(width)))
   }
 
+  function getMaxSidebarWidth(totalWidth: number): number {
+    return Math.max(minWidth, totalWidth - minRightWidth - splitterWidth)
+  }
+
+  function clampSidebarWidth(totalWidth = window.innerWidth): void {
+    if (isStacked.value) {
+      return
+    }
+
+    const nextWidth = clamp(sidebarWidth.value, minWidth, getMaxSidebarWidth(totalWidth))
+
+    if (nextWidth !== sidebarWidth.value) {
+      sidebarWidth.value = nextWidth
+      notifyLayoutResize()
+    }
+  }
+
   function updateWidth(clientX: number): void {
     const nextWidth = clamp(
       clientX - containerLeft,
       minWidth,
-      Math.max(minWidth, containerWidth - minRightWidth)
+      getMaxSidebarWidth(containerWidth)
     )
 
     if (nextWidth === sidebarWidth.value) {
@@ -116,7 +153,7 @@ export function useHorizontalSplit(
   }
 
   function startDrag(event: PointerEvent): void {
-    if (event.button !== 0) {
+    if (isStacked.value || event.button !== 0) {
       return
     }
 
@@ -147,13 +184,55 @@ export function useHorizontalSplit(
     updateWidth(event.clientX)
   }
 
+  function syncStackedState(): void {
+    const nextStacked = window.innerWidth <= stackBreakpoint
+
+    if (nextStacked === isStacked.value) {
+      if (!nextStacked) {
+        clampSidebarWidth(window.innerWidth)
+      }
+      return
+    }
+
+    isStacked.value = nextStacked
+
+    if (nextStacked) {
+      stopDrag()
+    } else {
+      clampSidebarWidth(window.innerWidth)
+    }
+
+    notifyLayoutResize()
+  }
+
+  function handleWindowResize(): void {
+    syncStackedState()
+    clampSidebarWidth(window.innerWidth)
+  }
+
+  function handleMediaChange(): void {
+    syncStackedState()
+  }
+
+  onMounted((): void => {
+    mediaQuery = window.matchMedia(`(max-width: ${stackBreakpoint}px)`)
+    syncStackedState()
+    clampSidebarWidth(window.innerWidth)
+
+    window.addEventListener('resize', handleWindowResize)
+    mediaQuery.addEventListener('change', handleMediaChange)
+  })
+
   onBeforeUnmount((): void => {
     stopDrag()
+    window.removeEventListener('resize', handleWindowResize)
+    mediaQuery?.removeEventListener('change', handleMediaChange)
   })
 
   return {
     sidebarWidth,
     isDragging,
+    isStacked,
     bodyStyle,
     startDrag
   }

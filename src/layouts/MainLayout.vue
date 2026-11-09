@@ -3,10 +3,11 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import LessonSidebar from '@/components/layout/LessonSidebar.vue'
 import { useHorizontalSplit } from '@/composables/useHorizontalSplit'
 
-const { isDragging, bodyStyle, startDrag } = useHorizontalSplit({
+const { isDragging, isStacked, bodyStyle, startDrag } = useHorizontalSplit({
   initialWidth: 340,
   minWidth: 240,
-  minRightWidth: 320
+  minRightWidth: 320,
+  stackBreakpoint: 900
 })
 </script>
 
@@ -15,12 +16,16 @@ const { isDragging, bodyStyle, startDrag } = useHorizontalSplit({
     <AppHeader />
     <div
       class="main-layout__body"
-      :class="{ 'is-dragging': isDragging }"
+      :class="{
+        'is-dragging': isDragging,
+        'is-stacked': isStacked
+      }"
       :style="bodyStyle"
     >
       <LessonSidebar class="main-layout__sidebar" />
 
       <div
+        v-show="!isStacked"
         class="main-layout__splitter"
         role="separator"
         aria-orientation="vertical"
@@ -45,14 +50,17 @@ const { isDragging, bodyStyle, startDrag } = useHorizontalSplit({
   width: 100%;
   height: 100%;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 .main-layout__body {
   display: grid;
   grid-template-columns: var(--sidebar-width) 6px minmax(0, 1fr);
   flex: 1;
+  min-width: 0;
   min-height: 0;
   height: calc(100vh - var(--header-height));
+  overflow: hidden;
 }
 
 .main-layout__body.is-dragging {
@@ -66,6 +74,7 @@ const { isDragging, bodyStyle, startDrag } = useHorizontalSplit({
 .main-layout__sidebar {
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: rgba(255, 250, 242, 0.92);
   backdrop-filter: blur(8px);
 }
@@ -105,23 +114,17 @@ const { isDragging, bodyStyle, startDrag } = useHorizontalSplit({
 .main-layout__content {
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: var(--bg-demo);
 }
 
-@media (max-width: 900px) {
-  .main-layout__body {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: minmax(240px, 38vh) 0 minmax(0, 1fr);
-    height: auto;
-    min-height: calc(100vh - var(--header-height));
-  }
+/* 窄屏：上下堆叠，两侧都保持在视口内可见 */
+.main-layout__body.is-stacked {
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(220px, 38%) minmax(280px, 62%);
+}
 
-  .main-layout__splitter {
-    display: none;
-  }
-
-  .main-layout__sidebar {
-    border-bottom: 1px solid var(--border);
-  }
+.main-layout__body.is-stacked .main-layout__sidebar {
+  border-bottom: 1px solid var(--border);
 }
 </style>
